@@ -32,6 +32,7 @@ import {
 } from "../hooks/useContract"
 
 import { AppState } from "../state/index"
+import { BasicPoolsContext } from "../providers/BasicPoolsProvider"
 import { BigNumber } from "@ethersproject/bignumber"
 import { PendingSwapsContext } from "../providers/PendingSwapsProvider"
 import SwapPage from "../components/SwapPage"
@@ -43,7 +44,6 @@ import { formatGasToString } from "../utils/gas"
 import { useActiveWeb3React } from "../hooks"
 import { useApproveAndSwap } from "../hooks/useApproveAndSwap"
 import { usePoolTokenBalances } from "../state/wallet/hooks"
-import usePoolsStatuses from "../hooks/usePoolsStatuses"
 import { useSelector } from "react-redux"
 import { useTranslation } from "react-i18next"
 import { utils } from "ethers"
@@ -100,7 +100,7 @@ function Swap(): ReactElement {
   const { chainId } = useActiveWeb3React()
   const approveAndSwap = useApproveAndSwap()
   const tokenBalances = usePoolTokenBalances()
-  const poolsStatuses = usePoolsStatuses()
+  const basicPools = useContext(BasicPoolsContext)
   const bridgeContract = useBridgeContract()
   const snxEchangeRatesContract = useSynthetixExchangeRatesContract()
   const calculateSwapPairs = useCalculateSwapPairs()
@@ -137,8 +137,12 @@ function Swap(): ReactElement {
         const tokenPools = TOKEN_TO_POOLS_MAP[symbol]
         // ensure at least one pool is unpaused to include token in swappable list
         const hasAnyUnpaused = tokenPools.reduce((acc, poolName) => {
-          const poolStatus = poolsStatuses[poolName as PoolName]
-          return poolStatus ? Boolean(acc || !poolStatus.isPaused) : acc
+          const pool = POOLS_MAP[poolName]
+          const poolAddress = (
+            pool?.metaSwapAddresses?.[chainId] || pool.addresses[chainId]
+          ).toLowerCase()
+          const basicPool = basicPools?.[poolAddress]
+          return basicPool ? Boolean(acc || !basicPool.isPaused) : acc
         }, false)
         return hasAnyUnpaused
       })
@@ -189,7 +193,7 @@ function Swap(): ReactElement {
     tokenBalances,
     formState.currentSwapPairs,
     chainId,
-    poolsStatuses,
+    basicPools,
   ])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const calculateSwapAmount = useCallback(
