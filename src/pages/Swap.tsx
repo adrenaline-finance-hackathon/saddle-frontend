@@ -137,11 +137,7 @@ function Swap(): ReactElement {
         const tokenPools = TOKEN_TO_POOLS_MAP[symbol]
         // ensure at least one pool is unpaused to include token in swappable list
         const hasAnyUnpaused = tokenPools.reduce((acc, poolName) => {
-          const pool = POOLS_MAP[poolName]
-          const poolAddress = (
-            pool?.metaSwapAddresses?.[chainId] || pool.addresses[chainId]
-          ).toLowerCase()
-          const basicPool = basicPools?.[poolAddress]
+          const basicPool = basicPools?.[poolName]
           return basicPool ? Boolean(acc || !basicPool.isPaused) : acc
         }, false)
         return hasAnyUnpaused

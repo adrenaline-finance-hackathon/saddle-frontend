@@ -1,10 +1,5 @@
 import { Box, Divider, Typography, styled } from "@mui/material"
-import {
-  POOLS_MAP,
-  POOL_FEE_PRECISION,
-  PoolTypes,
-  TOKENS_MAP,
-} from "../constants"
+import { POOLS_MAP, POOL_FEE_PRECISION, PoolTypes } from "../constants"
 import React, { ReactElement } from "react"
 import {
   bnSum,
@@ -79,10 +74,9 @@ function PoolInfoCard({ data }: Props): ReactElement | null {
       : "-",
     tokens:
       data?.tokens.map((coin) => {
-        const token = TOKENS_MAP[coin.symbol]
         return {
-          symbol: token.symbol,
-          name: token.name,
+          symbol: coin.symbol,
+          name: coin.name,
           percent: coinsSum.gt(Zero)
             ? formatBNToPercentString(
                 coin.value.mul(BigInt(1e18)).div(coinsSum),

@@ -324,9 +324,9 @@ export function getPriceDataForPool(
     balance.mul(poolAssetPrice).div(BigNumber.from(10).pow(18)),
   )
   const tokenBalancesSumUSD = tokenBalancesUSD.reduce(bnSum, Zero)
-  const lpTokenPriceUSD = tokenBalancesSumUSD
-    .mul(BigInt(1e18))
-    .div(basicPool.lpTokenSupply)
+  const lpTokenPriceUSD = basicPool.lpTokenSupply.isZero()
+    ? Zero
+    : tokenBalancesSumUSD.mul(BigInt(1e18)).div(basicPool.lpTokenSupply)
   return {
     assetPrice: poolAssetPrice,
     lpTokenPriceUSD,
