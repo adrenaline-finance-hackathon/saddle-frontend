@@ -95,6 +95,7 @@ function NetworkSection(): ReactElement {
     ChainId.MAINNET,
     ChainId.FANTOM,
     ChainId.EVMOS,
+    ChainId.ROPSTEN,
     ...(IS_DEVELOPMENT ? [ChainId.EVMOS_TESTNET] : []),
     ...(IS_L2_SUPPORTED ? [ChainId.ARBITRUM, ChainId.OPTIMISM] : []),
   ]

@@ -95,6 +95,17 @@ export const SUPPORTED_NETWORKS: SupportedNetworks = {
     rpcUrls: ["https://eth.bd.evmos.org:8545"],
     blockExplorerUrls: ["https://evm.evmos.org"],
   },
+  [ChainId.ROPSTEN]: {
+    chainId: "0x3",
+    chainName: "Ropsten",
+    nativeCurrency: {
+      name: "Ethereym",
+      symbol: "Eth",
+      decimals: 18,
+    },
+    rpcUrls: ["https://ropsten.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161"],
+    blockExplorerUrls: ["https://evm.evmos.org"],
+  },
 }
 
 export const DEV_SUPPORTED_NETWORKS: SupportedNetworks = {
