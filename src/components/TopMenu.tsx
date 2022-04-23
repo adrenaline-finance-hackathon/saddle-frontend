@@ -94,10 +94,10 @@ function TopMenu(): ReactElement {
             <NavMenu to="/pools" selected={activeTab === "pools"}>
               {t("Farm")}
             </NavMenu>
-
+            {/* 
             <NavMenu to="/risk" selected={activeTab === "risk"}>
               {t("risk")}
-            </NavMenu>
+            </NavMenu> */}
           </Stack>
           <Stack
             direction="row"

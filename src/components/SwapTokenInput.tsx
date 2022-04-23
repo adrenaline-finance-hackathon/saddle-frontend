@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   Button,
   Chip,
@@ -67,6 +68,7 @@ export default function SwapTokenInput({
 
   const handleClick = () => {
     // setAnchorEl(event.currentTarget)
+
     if (containerRef?.current) setAnchorEl(containerRef.current)
   }
 
@@ -173,7 +175,6 @@ export default function SwapTokenInput({
           </Typography>
         </Box>
       </Box>
-
       <StyledPopper
         open={open}
         anchorEl={anchorEl}

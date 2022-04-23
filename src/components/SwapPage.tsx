@@ -11,7 +11,6 @@ import React, { ReactElement, useMemo, useState } from "react"
 import { SWAP_TYPES, getIsVirtualSwap } from "../constants"
 import { formatBNToPercentString, formatBNToString } from "../utils"
 
-import AdvancedOptions from "./AdvancedOptions"
 import { AppState } from "../state/index"
 import { BigNumber } from "@ethersproject/bignumber"
 import ConfirmTransaction from "./ConfirmTransaction"
@@ -280,7 +279,6 @@ const SwapPage = (props: Props): ReactElement => {
           )
         })}
       </div>
-      <AdvancedOptions />
 
       <Button
         variant="contained"
