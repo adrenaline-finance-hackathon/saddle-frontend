@@ -293,7 +293,7 @@ const SwapPage = (props: Props): ReactElement => {
         disabled={!!error || +toState.value <= 0}
         sx={{ mt: 3 }}
       >
-        {t("swap")}
+        {t("Mint")}
       </Button>
 
       <Typography

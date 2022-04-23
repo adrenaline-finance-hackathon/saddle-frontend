@@ -88,11 +88,11 @@ function TopMenu(): ReactElement {
               to="/"
               selected={activeTab === ""}
             >
-              {t("swap")}
+              {t("Mint")}
             </NavMenu>
 
             <NavMenu to="/pools" selected={activeTab === "pools"}>
-              {t("pools")}
+              {t("Farm")}
             </NavMenu>
 
             <NavMenu to="/risk" selected={activeTab === "risk"}>
