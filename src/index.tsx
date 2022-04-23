@@ -28,11 +28,6 @@ if (window && window.ethereum) {
 
 window.addEventListener("error", logError)
 
-// biatch
-
-
-// This Sentry DSN only works with production origin URLs and will discard everything else
-// TODO: If we like Sentry, add support for other environments and move the DSN configuration into .env
 Sentry.init({
   // dsn: "https://aa2638e61b14430385cc4be7023ba621@o1107900.ingest.sentry.io/6135183",
   dsn: "https://27851372f6034fcaa78d56feaa25cdb7@o1216256.ingest.sentry.io/6358274",
