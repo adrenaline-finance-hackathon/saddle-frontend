@@ -1,0 +1,337 @@
+import {
+  ALETH_POOL_NAME,
+  ChainId,
+  D4_POOL_NAME,
+  MINICHEF_CONTRACT_ADDRESSES,
+  POOLS_MAP,
+  PoolName,
+  TBTC_METAPOOL_V2_NAME,
+  USDS_ARB_USD_METAPOOL_NAME,
+  VETH2_POOL_NAME,
+} from "../constants"
+import { AddressZero, Zero } from "@ethersproject/constants"
+import { getContract, getMulticallProvider, shiftBNDecimals } from "../utils"
+
+import ALCX_REWARDS_ABI from "../constants/abis/alchemixStakingPools.json"
+import { AlchemixStakingPools } from "../../types/ethers-contracts/AlchemixStakingPools"
+import { BigNumber } from "@ethersproject/bignumber"
+import { Contract } from "ethcall"
+import IREWARDER_ABI from "../constants/abis/IRewarder.json"
+import { IRewarder } from "../../types/ethers-contracts/IRewarder"
+import LP_TOKEN_ABI from "../constants/abis/lpTokenUnguarded.json"
+import { LpTokenUnguarded } from "../../types/ethers-contracts/LpTokenUnguarded"
+import { MulticallContract } from "../types/ethcall"
+import SGT_REWARDS_ABI from "../constants/abis/sharedStakeStakingRewards.json"
+import { SharedStakeStakingRewards } from "../../types/ethers-contracts/SharedStakeStakingRewards"
+import { TokenPricesUSD } from "../state/application"
+import { Web3Provider } from "@ethersproject/providers"
+import { parseUnits } from "@ethersproject/units"
+
+export type Partners =
+  | "threshold"
+  | "sharedStake"
+  | "alchemix"
+  | "frax"
+  | "sperax"
+
+type ThirdPartyData = {
+  aprs: Partial<
+    Record<
+      Partners,
+      {
+        symbol: string
+        apr: BigNumber
+      }
+    >
+  >
+  amountsStaked: Partial<Record<Partners, BigNumber>>
+  claimableAmount: Partial<Record<Partners, BigNumber>>
+}
+export async function getThirdPartyDataForPool(
+  library: Web3Provider,
+  chainId: ChainId,
+  accountId: string | undefined | null,
+  poolName: PoolName,
+  tokenPricesUSD: TokenPricesUSD,
+  lpTokenPriceUSD: BigNumber,
+): Promise<ThirdPartyData> {
+  const result: ThirdPartyData = {
+    aprs: {},
+    amountsStaked: {},
+    claimableAmount: {},
+  }
+  try {
+    if (poolName === ALETH_POOL_NAME) {
+      const rewardSymbol = "ALCX"
+      const [apr, userStakedAmount] = await getAlEthData(
+        library,
+        chainId,
+        lpTokenPriceUSD,
+        tokenPricesUSD?.[rewardSymbol],
+        accountId,
+      )
+      result.aprs.alchemix = { apr, symbol: rewardSymbol }
+      result.amountsStaked.alchemix = userStakedAmount
+    } else if (poolName === VETH2_POOL_NAME) {
+      const rewardSymbol = "SGT"
+      const [apr, userStakedAmount] = await getSharedStakeData(
+        library,
+        chainId,
+        lpTokenPriceUSD,
+        tokenPricesUSD?.[rewardSymbol],
+        accountId,
+      )
+      result.aprs.sharedStake = { apr, symbol: rewardSymbol }
+      result.amountsStaked.sharedStake = userStakedAmount
+    } else if (poolName === TBTC_METAPOOL_V2_NAME) {
+      const rewardSymbol = "T"
+      const [apr, userStakedAmount, thresholdClaimableAmount] =
+        await getThresholdData(
+          library,
+          chainId,
+          lpTokenPriceUSD,
+          tokenPricesUSD?.[rewardSymbol],
+          accountId,
+        )
+      result.aprs.threshold = { apr, symbol: rewardSymbol }
+      result.amountsStaked.threshold = userStakedAmount
+      result.claimableAmount.threshold = thresholdClaimableAmount
+    } else if (poolName === D4_POOL_NAME) {
+      // this is a slight bastardization of how this is supposed to work
+      // TODO: update once we have UI for multiple APYS
+      const rewardSymbol = "ALCX/FXS/LQTY/TRIBE"
+      const [apr, userStakedAmount] = await getFraxData(
+        library,
+        chainId,
+        lpTokenPriceUSD,
+      )
+      result.aprs.frax = { apr, symbol: rewardSymbol }
+      result.amountsStaked.frax = userStakedAmount
+    } else if (poolName === USDS_ARB_USD_METAPOOL_NAME) {
+      const rewardSymbol = "SPA"
+      const [apr, userStakedAmount] = await getSperaxData(
+        library,
+        chainId,
+        lpTokenPriceUSD,
+        tokenPricesUSD?.[rewardSymbol],
+      )
+      result.aprs.sperax = { apr, symbol: rewardSymbol }
+      result.amountsStaked.sperax = userStakedAmount
+    }
+  } catch (e) {
+    console.error(e)
+  }
+  return result
+}
+
+type FraxCombinedData = {
+  liq_staking: { "Saddle alUSD/FEI/FRAX/LUSD": { apy: number } }
+}
+async function getFraxData(
+  library: Web3Provider,
+  chainId: ChainId,
+  lpTokenPrice: BigNumber,
+): Promise<[BigNumber, BigNumber]> {
+  if (library == null || lpTokenPrice.eq("0") || chainId !== ChainId.MAINNET)
+    return [Zero, Zero]
+  const fetchFraxData = (): Promise<FraxCombinedData> =>
+    fetch("https://api.frax.finance/combineddata/")
+      .then((r) => r.json())
+      .then((data: FraxCombinedData) => data)
+  const fraxData = await fetchFraxData()
+  const resApy = fraxData?.["liq_staking"]["Saddle alUSD/FEI/FRAX/LUSD"]["apy"]
+  const apy = resApy ? parseUnits(resApy.toFixed(4), 16) : Zero // comes back as 1e-2 so we do 18-2
+  return [apy, Zero]
+}
+
+async function getSharedStakeData(
+  library: Web3Provider,
+  chainId: ChainId,
+  lpTokenPrice: BigNumber,
+  sgtPrice = 0,
+  accountId?: string | null,
+): Promise<[BigNumber, BigNumber]> {
+  // https://github.com/SharedStake/SharedStake-ui/blob/main/src/components/Earn/geyser.vue#L336
+  if (
+    library == null ||
+    lpTokenPrice.eq("0") ||
+    sgtPrice === 0 ||
+    chainId !== ChainId.MAINNET
+  )
+    return [Zero, Zero]
+  const ethcallProvider = await getMulticallProvider(library, chainId)
+  const rewardsContract = new Contract(
+    "0xcf91812631e37c01c443a4fa02dfb59ee2ddba7c", // prod address
+    SGT_REWARDS_ABI,
+  ) as MulticallContract<SharedStakeStakingRewards>
+  const multicalls = [
+    rewardsContract.periodFinish(), // 1e0 timestamp in seconds
+    rewardsContract.rewardsDuration(), // 1e0 seconds
+    rewardsContract.getRewardForDuration(), // 1e18
+    rewardsContract.totalSupply(), // 1e18
+    rewardsContract.balanceOf(accountId || AddressZero),
+  ]
+  const [
+    until,
+    rewardsDuration,
+    sgtRewardsPerPeriod,
+    totalStaked,
+    userStakedAmount,
+  ] = await ethcallProvider.tryEach(
+    multicalls,
+    multicalls.map(() => false),
+  )
+  const nowSeconds = BigNumber.from(Math.floor(Date.now() / 1000))
+  const remainingDays = until.sub(nowSeconds).div(60 * 60 * 24) // 1e0
+  const rewardsDurationDays = rewardsDuration.div(60 * 60 * 24) // 1e0
+  if (
+    remainingDays.lte(Zero) ||
+    rewardsDurationDays.eq(Zero) ||
+    sgtRewardsPerPeriod.eq(Zero) ||
+    totalStaked.eq(Zero)
+  ) {
+    return [Zero, userStakedAmount]
+  }
+  const remainingRewards = remainingDays.mul(
+    sgtRewardsPerPeriod.div(rewardsDurationDays),
+  ) // 1e18
+
+  const remainingRewardsValueUSD = parseUnits(sgtPrice.toFixed(2), 4).mul(
+    remainingRewards,
+  ) // 1e22
+  const annualCoefficient = BigNumber.from(365)
+    .mul(BigNumber.from(10).pow(18))
+    .div(remainingDays) // 1e18
+
+  const totalStakedUSD = totalStaked.mul(lpTokenPrice) // 1e36
+  const pctYieldForPool = remainingRewardsValueUSD
+    .mul(BigNumber.from(10).pow(14))
+    .div(totalStakedUSD) // 1e18
+  const apr = pctYieldForPool.mul(annualCoefficient) // 1e18
+
+  return [apr, userStakedAmount]
+}
+
+async function getAlEthData(
+  library: Web3Provider,
+  chainId: ChainId,
+  lpTokenPrice: BigNumber,
+  alcxPrice = 0,
+  accountId?: string | null,
+): Promise<[BigNumber, BigNumber]> {
+  if (
+    library == null ||
+    lpTokenPrice.eq("0") ||
+    alcxPrice === 0 ||
+    chainId !== ChainId.MAINNET
+  )
+    return [Zero, Zero]
+  const ethcallProvider = await getMulticallProvider(library, chainId)
+  const rewardsContract = new Contract(
+    "0xAB8e74017a8Cc7c15FFcCd726603790d26d7DeCa", // prod address
+    ALCX_REWARDS_ABI,
+  ) as MulticallContract<AlchemixStakingPools>
+  const POOL_ID = 6
+  const multicalls = [
+    rewardsContract.getPoolRewardRate(POOL_ID),
+    rewardsContract.getPoolTotalDeposited(POOL_ID),
+    rewardsContract.getStakeTotalDeposited(accountId || AddressZero, POOL_ID),
+  ]
+  const [alcxRewardPerBlock, poolTotalDeposited, userStakedAmount] =
+    await ethcallProvider.tryEach(
+      multicalls,
+      multicalls.map(() => false),
+    )
+  const alcxPerYear = alcxRewardPerBlock.mul(52 * 45000) // 1e18 // blocks/year rate from Alchemix's own logic
+  const alcxPerYearUSD = alcxPerYear.mul(parseUnits(alcxPrice.toFixed(2), 2)) // 1e20
+  const totalDepositedUSD = poolTotalDeposited.mul(lpTokenPrice) // 1e36
+  const alcxApr = alcxPerYearUSD
+    .mul(BigNumber.from(10).pow(34))
+    .div(totalDepositedUSD) // 1e18
+  return [alcxApr, userStakedAmount]
+}
+
+async function getSperaxData(
+  library: Web3Provider,
+  chainId: ChainId,
+  lpTokenPrice: BigNumber,
+  spaPrice = 0,
+  accountId?: string | null,
+): Promise<[BigNumber, BigNumber]> {
+  if (
+    library == null ||
+    lpTokenPrice.eq("0") ||
+    spaPrice === 0 ||
+    chainId !== ChainId.ARBITRUM
+  )
+    return [Zero, Zero]
+  const rewardsContract = getContract(
+    "0x1e35ebF875f8A2185EDf22da02e7dBCa0F5558aB", // prod address on arbitrum
+    IREWARDER_ABI,
+    library,
+  ) as IRewarder
+  const pool = POOLS_MAP[USDS_ARB_USD_METAPOOL_NAME]
+  const lpTokenContract = getContract(
+    pool.lpToken.addresses[chainId],
+    LP_TOKEN_ABI,
+    library,
+  ) as LpTokenUnguarded
+  const [totalDeposited, spaRewardsPerSecond, userStakedData] =
+    await Promise.all([
+      lpTokenContract.balanceOf(MINICHEF_CONTRACT_ADDRESSES[chainId]),
+      rewardsContract.rewardPerSecond(),
+      rewardsContract.userInfo(accountId || AddressZero),
+    ])
+
+  const spaPerYear = spaRewardsPerSecond.mul(3600 * 24 * 365) // 1e18
+  const spaPerYearUSD = spaPerYear.mul(parseUnits(spaPrice.toFixed(3), 3)) // 1e18 + 3 = 1e21
+  const totalDepositedUSD = totalDeposited.mul(lpTokenPrice) // 1e36
+  const spaApr = shiftBNDecimals(spaPerYearUSD, 33).div(totalDepositedUSD) // (1e21 + 1e33 = 1e54) / 1e36 = 1e18
+  return [spaApr, userStakedData.amount]
+}
+
+// TODO refactor SPA and T fns to read directly from minichef to get simpleRewarder addr
+// https://etherscan.io/address/0xe8e1a94f0c960d64e483ca9088a7ec52e77194c2#readContract
+async function getThresholdData(
+  library: Web3Provider,
+  chainId: ChainId,
+  lpTokenPrice: BigNumber,
+  thresholdPrice = 0,
+  accountId?: string | null,
+): Promise<[BigNumber, BigNumber, BigNumber]> {
+  if (
+    library == null ||
+    lpTokenPrice.eq("0") ||
+    thresholdPrice === 0 ||
+    chainId !== ChainId.MAINNET ||
+    !accountId
+  )
+    return [Zero, Zero, Zero]
+  const rewardsContract = getContract(
+    "0xe8e1a94F0C960D64E483cA9088A7EC52E77194C2", // prod address
+    IREWARDER_ABI,
+    library,
+  ) as IRewarder
+  const pool = POOLS_MAP[TBTC_METAPOOL_V2_NAME]
+  const lpTokenContract = getContract(
+    pool.lpToken.addresses[chainId],
+    LP_TOKEN_ABI,
+    library,
+  ) as LpTokenUnguarded
+  const [totalDeposited, thresholdRewardsPerSecond, thresholdClaimableAmount] =
+    await Promise.all([
+      lpTokenContract.balanceOf(MINICHEF_CONTRACT_ADDRESSES[chainId]),
+      rewardsContract.rewardPerSecond(),
+      rewardsContract.pendingToken(accountId),
+    ])
+
+  const thresholdPerYear = thresholdRewardsPerSecond.mul(3600 * 24 * 365) // 1e18
+  const thresholdPerYearUSD = thresholdPerYear.mul(
+    parseUnits(thresholdPrice.toFixed(3), 3),
+  ) // 1e18 + 3 = 1e21
+  const totalDepositedUSD = totalDeposited.mul(lpTokenPrice) // 1e18 + 1e18 = 1e36
+  const thresholdApr = shiftBNDecimals(thresholdPerYearUSD, 33).div(
+    totalDepositedUSD,
+  ) // (1e21 + 1e33 = 1e54) / 1e36 = 1e18
+  return [thresholdApr, Zero, thresholdClaimableAmount]
+}

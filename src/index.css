@@ -1,0 +1,13 @@
+body {
+  font-family: "Source Code Pro", monospace, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* prevent screen shaking due to the appearing of scrollbar */
+  overflow-x: hidden;
+  padding-right: calc(-1 * (100vw - 100%));
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
+}
