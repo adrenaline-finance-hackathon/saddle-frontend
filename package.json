@@ -67,7 +67,7 @@
     "@storybook/react": "^6.4.14",
     "@testing-library/jest-dom": "^5.11.5",
     "@testing-library/react": "^11.2.6",
-    "@testing-library/user-event": "^13.5.0",
+    "@testing-library/user-event": "^14.4.3",
     "@typechain/ethers-v5": "^6.0.5",
     "@types/async-retry": "^1.4.2",
     "@typescript-eslint/eslint-plugin": "^4.9.1",
